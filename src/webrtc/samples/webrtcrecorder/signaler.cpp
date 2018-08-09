@@ -46,7 +46,7 @@ void Signaler::sendSDP(wrtc::Peer* conn, const std::string& type, const std::str
     desc[wrtc::kSessionDescriptionTypeName] = type;
     desc[wrtc::kSessionDescriptionSdpName] = sdp;
     m[type] = desc;
-
+    m.setTo(conn->peerid());
     postMessage(m);
 }
 

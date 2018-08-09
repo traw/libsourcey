@@ -66,7 +66,7 @@ void Signaler::sendSDP(wrtc::Peer* conn, const std::string& type,
     //     { wrtc::kSessionDescriptionTypeName, type },
     //     { wrtc::kSessionDescriptionSdpName, sdp} }
     // });
-
+    m.setTo(conn->peerid());
     postMessage(m);
 }
 
@@ -86,7 +86,7 @@ void Signaler::sendCandidate(wrtc::Peer* conn, const std::string& mid,
     //     { wrtc::kCandidateSdpMlineIndexName, mlineindex},
     //     { wrtc::kCandidateSdpName, sdp} }
     // });
-
+    
     postMessage(m);
 }
 

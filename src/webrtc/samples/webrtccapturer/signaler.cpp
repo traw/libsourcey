@@ -59,7 +59,7 @@ void Signaler::sendSDP(wrtc::Peer* conn, const std::string& type,
         { wrtc::kSessionDescriptionSdpName, sdp }
       }}
     });
-
+    e.setTo(conn->peerid());
     postMessage(e);
 }
 
