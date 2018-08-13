@@ -18,6 +18,7 @@
 #include "scy/net/sslsocket.h"
 #include "scy/symple/client.h"
 #include "scy/webrtc/peermanager.h"
+#include "scy/webrtc/multiplexmediacapturer.h"
 
 
 namespace scy {
@@ -59,6 +60,10 @@ protected:
 #else
     smpl::TCPClient _client;
 #endif
+    
+    wrtc::MultiplexMediaCapturer _capturer;
+    bool _enableFilsStreaming;
+
     ipc::SyncQueue<> _ipc;
 };
 

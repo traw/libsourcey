@@ -1,5 +1,6 @@
 $(document).ready(function() {
-    var client, player, remotePeer, remoteStreamingDevice;
+    var client, player, remotePeer, remoteStreamingDevice, connected;
+    var streamType;
 
     //
     // WebRTC player
@@ -38,51 +39,49 @@ $(document).ready(function() {
 
     // Get a list of streaming devices from the peer
     var refreshStreamingDevices = function(peer) {
-        client.sendCommand({
-            node: 'streaming:devices',
-            to: peer
-        });
+        var command = {};
+        command["node"] = (streamType === "file") ? "streaming:files" : "streaming:devices";
+        command["to"] = peer;
+        client.sendCommand(command);
     };
 
     // Start streaming video from the peer
-    var startStreaming = function(peer, device) {
+    var startStreaming = function(peer, source) {
         recreatePlayer();
-
-        remoteStreamingDevice = device;
-        client.sendCommand({
-            node: 'streaming:start',
-            to: peer,
-            data: {
-                device: device
-            }
-        });
+        var command = {};
+        command["node"] = "streaming:start";
+        command["to"] = peer;   
+        command["data"] = {};
+        command["data"][streamType] = source;
+        remoteStreamingDevice = source;
+        client.sendCommand(command);
     };
 
     // Stop streaming video from the peer
-    var stopStreaming = function(peer, device) {
+    var stopStreaming = function(peer, source) {
         destroyPlayer();
 
+        var command = {};
+        command["node"] = "streaming:stop";
+        command["to"] = peer;
+        command["data"] = {};
+        command["data"][streamType] = source;
         remoteStreamingDevice = null;
-        client.sendCommand({
-            node: 'streaming:stop',
-            to: peer,
-            data: {
-                device: device
-            }
-        });
+        client.sendCommand(command);
     };
 
 
     //
     // Bind UI events
 
-    $('#streaming-devices').on('click', 'a', function(event) {
+    $('#stream').on('click', 'a', function(event) {
         var $this = $(this),
             user = $this.data('user'),
             device = $this.data('device'),
             isActive = $this.hasClass('active');
         if (isActive) {
             $this.removeClass('active');
+            //streamType = "undefined";
             stopStreaming(user, device);
         }
         else {
@@ -93,6 +92,37 @@ $(document).ready(function() {
         event.preventDefault();
     });
 
+    $("#stream-start").click(function() {
+        var action = $("#stream-start").attr('value');
+        var $devs = $('#stream a');
+        if(action === 'Start') {
+            streamType = $('input:radio[name=stream-type]:checked').val();
+            if(streamType===undefined ) {
+                alert('Please select one options!');
+                return;
+            }
+            //$('#stream').empty();
+            $("#stream-start").attr('value', 'Stop');
+            if(connected === undefined) {
+                connected = true;
+                client.connect();
+            }
+            else { 
+                refreshStreamingDevices($devs.data('user')); 
+            }
+        } else {
+            $("#stream-start").attr('value', 'Start');
+            var user = $devs.data('user'),
+                device = $devs.data('device'),
+                isActive = $devs.hasClass('active');
+            if (isActive) {
+                $('#stream').empty();
+                $devs.removeClass('active');
+                stopStreaming(user, device);
+            } 
+        }
+        $('input:radio[name=stream-type]:checked').prop('checked', false);
+    });
 
     //
     // Symple client
@@ -136,14 +166,14 @@ $(document).ready(function() {
 
         else if (c.node == 'streaming:devices') {
             if (c.status == 200) {
-
                 // Add new devices to the list
-                var $devs = $('#streaming-devices');
+                var $devs = $('#stream');
+                //$devs.empty();
                 for (var i = 0; i < c.data.devices.length; i++) {
                     var dev = c.data.devices[i];
                     if (!$devs.find('[data-device="' + dev + '"]').length)
                         $devs.append('<a href="#" data-user="' + c.from.user + '" data-device="' + dev + '" ' +
-                            'class="list-group-item list-group-item-action">' + c.from.user + ': ' + dev + '</a>');
+                            'class="list-group-item list-group-item-action">' + c.from.user + ': ' + dev + '</a>'); 
                 }
             }
             else {
@@ -153,6 +183,20 @@ $(document).ready(function() {
 
         else if (c.node == 'streaming:files') {
             // TODO: file streaming
+            if (c.status == 200) {
+                // Add new devices to the list
+                var $devs = $('#stream');
+                //$devs.empty();
+                for (var i = 0; i < c.data.files.length; i++) {
+                    var file = c.data.files[i];
+                    if (!$devs.find('[data-device="' + file + '"]').length)
+                        $devs.append('<a href="#" data-user="' + c.from.user + '" data-device="' + file + '" ' +
+                            'class="list-group-item list-group-item-action">' + c.from.user + ': ' + file + '</a>');
+                } 
+            }
+            else {
+                // Command error
+            }
         }
     });
 
@@ -235,6 +279,7 @@ $(document).ready(function() {
 
     client.on('disconnect', function() {
         // console.log('Disconnected from server')
+        //streamType = "undefined";
     });
 
     client.on('error', function(error, message) {
@@ -246,7 +291,7 @@ $(document).ready(function() {
 
         // Get a list of streaming devices as soon as the peer connects
         if (peer.type == 'demo') {
-            refreshStreamingDevices(peer);
+           refreshStreamingDevices(peer);
         }
     });
 
@@ -259,5 +304,5 @@ $(document).ready(function() {
         }
     });
 
-    client.connect();
+    //client.connect();
 });

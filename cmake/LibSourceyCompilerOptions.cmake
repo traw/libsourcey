@@ -22,7 +22,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   endif()
 
   # Using c++14 (CMAKE_CXX_FLAGS only, not for CMAKE_C_FLAGS)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1y")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
   # High level of warnings.
   set(LibSourcey_EXTRA_C_FLAGS "${LibSourcey_EXTRA_C_FLAGS} -Wall")

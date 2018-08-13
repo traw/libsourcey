@@ -13,14 +13,14 @@
 
 #ifdef HAVE_FFMPEG
 
+#include "media/engine/webrtcvideocapturerfactory.h"
+#include "modules/video_capture/video_capture_factory.h"
 #include "scy/av/audioresampler.h"
 #include "scy/av/ffmpeg.h"
 #include "scy/av/realtimepacketqueue.h"
 #include "scy/filesystem.h"
 #include "scy/logger.h"
 #include "scy/webrtc/webrtc.h"
-#include "media/engine/webrtcvideocapturerfactory.h"
-#include "modules/video_capture/video_capture_factory.h"
 
 
 namespace scy {
@@ -28,7 +28,8 @@ namespace wrtc {
 
 
 MultiplexMediaCapturer::MultiplexMediaCapturer()
-    : _videoCapture(std::make_shared<av::MediaCapture>())
+    : _isOpen(false)
+    , _videoCapture(std::make_shared<av::MediaCapture>())
     , _audioModule(AudioPacketModule::Create())
 {
     _stream.attachSource(_videoCapture, true);
@@ -45,6 +46,8 @@ MultiplexMediaCapturer::~MultiplexMediaCapturer()
 
 void MultiplexMediaCapturer::openFile(const std::string& file, bool loop)
 {
+    if(_isOpen)
+        return;
     // Open the capture file
     _videoCapture->setLoopInput(loop);
     _videoCapture->setLimitFramerate(true);
@@ -65,9 +68,9 @@ void MultiplexMediaCapturer::openFile(const std::string& file, bool loop)
         _videoCapture->video()->oparams.pixelFmt = "yuv420p"; // nv12
         // _videoCapture->video()->oparams.width = capture_format.width;
         // _videoCapture->video()->oparams.height = capture_format.height;
+        _isOpen = true;
     }
 }
-
 
 VideoPacketSource* MultiplexMediaCapturer::createVideoSource()
 {
@@ -127,7 +130,8 @@ void MultiplexMediaCapturer::stop()
 }
 
 
-} } // namespace scy::wrtc
+} // namespace wrtc
+} // namespace scy
 
 
 #endif // HAVE_FFMPEG

@@ -24,11 +24,28 @@
 using std::endl;
 
 
+namespace {
+// Sample data directory helper
+using namespace scy;
+std::string sampleDataDir(const std::string& file)
+{
+    std::string dir;
+    fs::addnode(dir, SCY_SOURCE_DIR);
+    fs::addnode(dir, "av");
+    fs::addnode(dir, "samples");
+    fs::addnode(dir, "data");
+    if (!file.empty())
+        fs::addnode(dir, file);
+    return dir;
+}
+
+}
+
 namespace scy {
 
 
 Signaler::Signaler(const smpl::Client::Options& options)
-    : _client(options)
+    : _client(options), _enableFilsStreaming(false)
 {
     _client.StateChange += slot(this, &Signaler::onClientStateChange);
     _client.roster().ItemAdded += slot(this, &Signaler::onPeerConnected);
@@ -52,13 +69,8 @@ void Signaler::sendSDP(wrtc::Peer* conn, const std::string& type,
 {
     assert(type == "offer" || type == "answer");
 
-    smpl::Event e({
-      { "name", "ice:sdp" },
-      { "sdp", {
-        { wrtc::kSessionDescriptionTypeName, type },
-        { wrtc::kSessionDescriptionSdpName, sdp }
-      }}
-    });
+    smpl::Event e({{"name", "ice:sdp"},
+                   {"sdp", {{wrtc::kSessionDescriptionTypeName, type}, {wrtc::kSessionDescriptionSdpName, sdp}}}});
     e.setTo(conn->peerid());
     postMessage(e);
 }
@@ -67,14 +79,9 @@ void Signaler::sendSDP(wrtc::Peer* conn, const std::string& type,
 void Signaler::sendCandidate(wrtc::Peer* conn, const std::string& mid,
                              int mlineindex, const std::string& sdp)
 {
-    smpl::Event e({
-      { "name", "ice:candidate" },
-      { "candidate", {
-        { wrtc::kCandidateSdpMidName, mid },
-        { wrtc::kCandidateSdpMlineIndexName, mlineindex},
-        { wrtc::kCandidateSdpName, sdp}
-      }}
-    });
+    smpl::Event e({{"name", "ice:candidate"},
+                   {"candidate", {{wrtc::kCandidateSdpMidName, mid}, {wrtc::kCandidateSdpMlineIndexName, mlineindex}, {wrtc::kCandidateSdpName, sdp}}}});
+
 
     postMessage(e);
 }
@@ -86,7 +93,8 @@ void Signaler::onPeerConnected(smpl::Peer& peer)
         return;
     LDebug("Peer connected: ", peer.id())
 
-    if (wrtc::PeerManager::exists(peer.id())) {
+        if (wrtc::PeerManager::exists(peer.id()))
+    {
         LDebug("Peer already has a session: ", peer.id())
     }
 }
@@ -94,10 +102,11 @@ void Signaler::onPeerConnected(smpl::Peer& peer)
 
 void Signaler::onPeerCommand(smpl::Command& c)
 {
-    LDebug("Peer command: ", c.from().toString())
+    LDebug("------>  Peer command: ", c.dump())
 
-    // List available devices for streaming
-    if (c.node() == "streaming:devices") {
+        // List available devices for streaming
+        if (c.node() == "streaming:devices")
+    {
         json::value devices;
         auto devs = wrtc::getVideoCaptureDevices();
         for (auto dev : devs) {
@@ -110,10 +119,15 @@ void Signaler::onPeerCommand(smpl::Command& c)
     }
 
     // List available files for streaming
-    else if (c.node() == "streaming:files") {
+    else if (c.node() == "streaming:files")
+    {
         json::value files;
+        std::string dataDir = SCY_SOURCE_DIR;
         StringVec nodes;
-        fs::readdir(getDataDirectory(), nodes);
+        fs::addnode(dataDir, "av");
+        fs::addnode(dataDir, "samples");
+        fs::addnode(dataDir, "data");
+        fs::readdir(dataDir, nodes);
         for (auto node : nodes) {
             files.push_back(node);
         }
@@ -124,36 +138,58 @@ void Signaler::onPeerCommand(smpl::Command& c)
     }
 
     // Start a streaming session
-    else if (c.node() == "streaming:start") {
-        std::string device = c.data("device").get<std::string>();
+    else if (c.node() == "streaming:start")
+    {
+        wrtc::Peer* conn = nullptr;
 
-        // Stream a file from the filesystem like so:
-        // std::string file = c.data("file").get<std::string>();
-        // std::string filePath(getDataDirectory());
-        // fs::addnode(filePath, file);
+        std::string device = c["data"].value("device", "");
+        std::string file = c["data"].value("file", "");
 
-        // Create the Peer Connection
-        auto conn = new wrtc::Peer(this, &_context, c.from().id, c.id(), wrtc::Peer::Offer);
-        conn->constraints().SetMandatoryReceiveAudio(false);
-        conn->constraints().SetMandatoryReceiveVideo(false);
-        conn->constraints().SetAllowDtlsSctpDataChannels();
 
-        // conn->setPortRange(40000, 40001);
+        //std::string device = c.data("device").get<std::string>();
+        if (!file.empty()) {
+            // Stream a file from the filesystem like so:
+            // std::string file = c.data("file").get<std::string>();
+            std::string filePath(sampleDataDir(file));
+            //fs::addnode(filePath, files);
 
-        // Create tracks and device captures
-        rtc::scoped_refptr<webrtc::AudioTrackInterface> audio_track(
-            _context.factory->CreateAudioTrack(wrtc::kAudioLabel,
-                _context.factory->CreateAudioSource(nullptr)));
-        rtc::scoped_refptr<webrtc::VideoTrackInterface> video_track(
-            _context.factory->CreateVideoTrack(wrtc::kVideoLabel,
-                _context.factory->CreateVideoSource(
-                    wrtc::openWebRtcVideoCaptureDevice(device), nullptr)));
+            bool looping = true;
+            // Open the video file
+            _capturer.openFile(filePath, looping);
+            // Create the Peer Peer
+            conn = new wrtc::Peer(this, &_context, c.from().id, "", wrtc::Peer::Offer);
+            conn->constraints().SetMandatoryReceiveAudio(false);
+            conn->constraints().SetMandatoryReceiveVideo(false);
+            conn->constraints().SetAllowDtlsSctpDataChannels();
 
-        // Create the media stream and attach device captures
-        auto stream = conn->createMediaStream();
-        stream->AddTrack(audio_track);
-        stream->AddTrack(video_track);
+            // Create the media stream and attach decoder
+            // output to the peer connection
+            _capturer.addMediaTracks(_context.factory, conn->createMediaStream());
+            _enableFilsStreaming = true;
+        } else {
+            // Create the Peer Connection
+            conn = new wrtc::Peer(this, &_context, c.from().id, c.id(), wrtc::Peer::Offer);
+            conn->constraints().SetMandatoryReceiveAudio(false);
+            conn->constraints().SetMandatoryReceiveVideo(false);
+            conn->constraints().SetAllowDtlsSctpDataChannels();
 
+            // conn->setPortRange(40000, 40001);
+
+            // Create tracks and device captures
+            rtc::scoped_refptr<webrtc::AudioTrackInterface> audio_track(
+                _context.factory->CreateAudioTrack(wrtc::kAudioLabel,
+                                                   _context.factory->CreateAudioSource(nullptr)));
+            rtc::scoped_refptr<webrtc::VideoTrackInterface> video_track(
+                _context.factory->CreateVideoTrack(wrtc::kVideoLabel,
+                                                   _context.factory->CreateVideoSource(
+                                                       wrtc::openWebRtcVideoCaptureDevice(device), nullptr)));
+
+            // Create the media stream and attach device captures
+            auto stream = conn->createMediaStream();
+            stream->AddTrack(audio_track);
+            stream->AddTrack(video_track);
+            _enableFilsStreaming = false;
+        }
         // Send the Offer SDP
         conn->createConnection();
         conn->createOffer();
@@ -165,11 +201,12 @@ void Signaler::onPeerCommand(smpl::Command& c)
     }
 
     // Stop streaming
-    else if (c.node() == "streaming:stop") {
+    else if (c.node() == "streaming:stop")
+    {
         auto conn = wrtc::PeerManager::get(c.from().id, false);
         if (conn) {
             LDebug("Closing peer connection: ", c.from().id)
-            conn->closeConnection(); // will be deleted via callback
+                conn->closeConnection(); // will be deleted via callback
         }
     }
 
@@ -197,10 +234,12 @@ void Signaler::onPeerEvent(smpl::Event& e)
 {
     LDebug("Peer event: ", e.from().toString())
 
-    if (e.name() == "ice:sdp") {
+        if (e.name() == "ice:sdp")
+    {
         recvSDP(e.from().id, e["sdp"]);
     }
-    else if (e.name() == "ice:candidate") {
+    else if (e.name() == "ice:candidate")
+    {
         recvCandidate(e.from().id, e["candidate"]);
     }
 }
@@ -216,12 +255,12 @@ void Signaler::onPeerDiconnected(const smpl::Peer& peer)
 {
     LDebug("Peer disconnected")
 
-    // TODO: Loop all and close for peer
+        // TODO: Loop all and close for peer
 
-    auto conn = get(peer.id(), false);
+        auto conn = get(peer.id(), false);
     if (conn) {
         LDebug("Closing peer connection: ", peer.id())
-        conn->closeConnection(); // will be deleted via callback
+            conn->closeConnection(); // will be deleted via callback
     }
 }
 
@@ -231,7 +270,8 @@ void Signaler::onClientStateChange(void* sender, sockio::ClientState& state,
 {
     LDebug("Client state changed from ", oldState, " to ", state)
 
-    switch (state.id()) {
+        switch (state.id())
+    {
         case sockio::ClientState::Connecting:
             break;
         case sockio::ClientState::Connected:
@@ -259,17 +299,24 @@ void Signaler::onRemoveRemoteStream(wrtc::Peer* conn, webrtc::MediaStreamInterfa
 
 void Signaler::onStable(wrtc::Peer* conn)
 {
+    if(_enableFilsStreaming)
+        _capturer.start();
 }
 
 
 void Signaler::onClosed(wrtc::Peer* conn)
 {
+    if(_enableFilsStreaming)
+        _capturer.stop();
     wrtc::PeerManager::onClosed(conn);
 }
 
 
 void Signaler::onFailure(wrtc::Peer* conn, const std::string& error)
 {
+
+    if(_enableFilsStreaming)
+        _capturer.stop();
     wrtc::PeerManager::onFailure(conn, error);
 }
 
