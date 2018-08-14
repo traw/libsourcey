@@ -227,6 +227,11 @@ void MultiplexEncoder::flush()
     }
 }
 
+int64_t MultiplexEncoder::fileSize() {
+    if (_formatCtx && _formatCtx->pb)
+        return avio_size(_formatCtx->pb);
+    return 0;
+}
 
 EncoderOptions& MultiplexEncoder::options()
 {

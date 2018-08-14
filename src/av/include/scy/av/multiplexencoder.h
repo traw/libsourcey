@@ -78,6 +78,9 @@ public:
     /// Flush and beffered or queued packets.
     virtual void flush();
 
+    /// get output files size
+    int64_t fileSize();
+
     EncoderOptions& options();
     VideoEncoder* video();
     AudioEncoder* audio();
